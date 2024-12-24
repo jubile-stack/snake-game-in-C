@@ -12,7 +12,6 @@
 #define GRID_OFFSET 50
 #define GRID_WIDTH ((SCREEN_WIDTH - 2 * GRID_OFFSET) / CELL_SIZE)
 #define GRID_HEIGHT ((SCREEN_HEIGHT - 2 * GRID_OFFSET) / CELL_SIZE)
-#define MAX_LIVES 3
 #define EASY_OBSTACLES 0
 #define MEDIUM_OBSTACLES 3
 #define HARD_OBSTACLES 6
@@ -39,7 +38,6 @@ typedef struct {
 
 typedef struct {
     int x, y;
-    bool isBonus;
 } Food;
 
 bool init(SDL_Window **window, SDL_Renderer **renderer, TTF_Font **font);
@@ -49,9 +47,9 @@ Difficulty showMenu(SDL_Renderer *renderer, TTF_Font *font);
 bool isMouseInsideRect(int mouseX, int mouseY, SDL_Rect rect);
 void spawnFood(Food *food, Snake *snake, Obstacle obstacles[], int numObstacles);
 void spawnObstacles(Obstacle obstacles[], int numObstacles, Snake *snake, Food *food);
-void handleInput(Direction *dir, bool *quit, bool *paused);
-void updateSnake(Snake *snake, Food *food, Obstacle obstacles[], int numObstacles, bool *gameOver, int *score, int *lives, bool *paused);
-void render(SDL_Renderer *renderer, Snake *snake, Food *food, Obstacle obstacles[], int numObstacles, int score, int lives, bool gameOver, bool paused, TTF_Font *font, SDL_Texture *foodTex, SDL_Texture *bgTex);
+void handleInput(Direction *dir, bool *quit, bool *paused, bool *returnToMenu);
+void updateSnake(Snake *snake, Food *food, Obstacle obstacles[], int numObstacles, bool *gameOver, int *score);
+void render(SDL_Renderer *renderer, Snake *snake, Food *food, Obstacle obstacles[], int numObstacles, int score, bool gameOver, bool paused, bool returnToMenu, TTF_Font *font, SDL_Texture *foodTex, SDL_Texture *bgTex);
 void drawMenu(SDL_Renderer *renderer, TTF_Font *font, SDL_Rect easyRect, SDL_Rect mediumRect, SDL_Rect hardRect, const char *title);
 void drawGrid(SDL_Renderer *renderer);
 void drawSnake(SDL_Renderer *renderer, Snake *snake);
@@ -74,52 +72,56 @@ int main(int argc, char *argv[]) {
     foodTex = loadTexture(renderer, "C:\\Users\\Olusegun\\Downloads\\jeu\\food.png");
     bgTex = loadTexture(renderer, "background.png");
 
-    // Afficher le menu et récupérer la difficulté choisie
-    Difficulty difficulty = showMenu(renderer, font);
-
-    // Configurer les obstacles et la vitesse en fonction de la difficulté
-    int numObstacles = 0;
-    int initialDelay = 300;
-    switch (difficulty) {
-        case EASY:
-            numObstacles = EASY_OBSTACLES;
-            initialDelay = 300;
-            break;
-        case MEDIUM:
-            numObstacles = MEDIUM_OBSTACLES;
-            initialDelay = 250;
-            break;
-        case HARD:
-            numObstacles = HARD_OBSTACLES;
-            initialDelay = 200;
-            break;
-        default:
-            close(window, renderer, font, foodTex, bgTex);
-            return 0;
-    }
-
-    srand((unsigned int)time(NULL));
-
-    // Initialisation du jeu
-    Snake snake = {{{GRID_WIDTH / 2, GRID_HEIGHT / 2}}, 3, RIGHT};
-    Food food = {0, 0, false};
-    Obstacle obstacles[HARD_OBSTACLES] = {0};
-    bool quit = false, gameOver = false, paused = false;
-    int score = 0, lives = MAX_LIVES;
-    int delay = initialDelay;
-
-    spawnFood(&food, &snake, obstacles, numObstacles);
-    spawnObstacles(obstacles, numObstacles, &snake, &food);
+    bool quit = false;
 
     while (!quit) {
-        handleInput(&snake.dir, &quit, &paused);
-        if (!gameOver && !paused) {
-            updateSnake(&snake, &food, obstacles, numObstacles, &gameOver, &score, &lives, &paused);
-            delay = initialDelay - (score * 5);
-            if (delay < 50) delay = 50;
+        // Afficher le menu et récupérer la difficulté choisie
+        Difficulty difficulty = showMenu(renderer, font);
+
+        // Configurer les obstacles et la vitesse en fonction de la difficulté
+        int numObstacles = 0;
+        int initialDelay = 300;
+        switch (difficulty) {
+            case EASY:
+                numObstacles = EASY_OBSTACLES;
+                initialDelay = 300;
+                break;
+            case MEDIUM:
+                numObstacles = MEDIUM_OBSTACLES;
+                initialDelay = 250;
+                break;
+            case HARD:
+                numObstacles = HARD_OBSTACLES;
+                initialDelay = 200;
+                break;
+            default:
+                close(window, renderer, font, foodTex, bgTex);
+                return 0;
         }
-        render(renderer, &snake, &food, obstacles, numObstacles, score, lives, gameOver, paused, font, foodTex, bgTex);
-        SDL_Delay(delay);
+
+        srand((unsigned int)time(NULL));
+
+        // Initialisation du jeu
+        Snake snake = {{{GRID_WIDTH / 2, GRID_HEIGHT / 2}}, 3, RIGHT};
+        Food food = {0, 0};
+        Obstacle obstacles[HARD_OBSTACLES] = {0};
+        bool gameOver = false, paused = false, returnToMenu = false;
+        int score = 0;
+        int delay = initialDelay;
+
+        spawnFood(&food, &snake, obstacles, numObstacles);
+        spawnObstacles(obstacles, numObstacles, &snake, &food);
+
+        while (!returnToMenu && !quit) {
+            handleInput(&snake.dir, &quit, &paused, &returnToMenu);
+            if (!gameOver && !paused) {
+                updateSnake(&snake, &food, obstacles, numObstacles, &gameOver, &score);
+                delay = initialDelay - (score * 5);
+                if (delay < 50) delay = 50;
+            }
+            render(renderer, &snake, &food, obstacles, numObstacles, score, gameOver, paused, returnToMenu, font, foodTex, bgTex);
+            SDL_Delay(delay);
+        }
     }
 
     close(window, renderer, font, foodTex, bgTex);
@@ -314,7 +316,7 @@ void spawnObstacles(Obstacle obstacles[], int numObstacles, Snake *snake, Food *
     }
 }
 
-void handleInput(Direction *dir, bool *quit, bool *paused) {
+void handleInput(Direction *dir, bool *quit, bool *paused, bool *returnToMenu) {
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
         if (e.type == SDL_QUIT) {
@@ -326,12 +328,13 @@ void handleInput(Direction *dir, bool *quit, bool *paused) {
                 case SDLK_LEFT: if (*dir != RIGHT) *dir = LEFT; break;
                 case SDLK_RIGHT: if (*dir != LEFT) *dir = RIGHT; break;
                 case SDLK_p: *paused = !*paused; break;
+                case SDLK_m: *returnToMenu = true; break;
             }
         }
     }
 }
 
-void updateSnake(Snake *snake, Food *food, Obstacle obstacles[], int numObstacles, bool *gameOver, int *score, int *lives, bool *paused) {
+void updateSnake(Snake *snake, Food *food, Obstacle obstacles[], int numObstacles, bool *gameOver, int *score) {
     for (int i = snake->length; i > 0; i--) {
         snake->body[i] = snake->body[i - 1];
     }
@@ -344,12 +347,7 @@ void updateSnake(Snake *snake, Food *food, Obstacle obstacles[], int numObstacle
 
     if (snake->body[0].x < 0 || snake->body[0].x >= GRID_WIDTH ||
         snake->body[0].y < 0 || snake->body[0].y >= GRID_HEIGHT) {
-        (*lives)--;
-        if (*lives <= 0) {
-            *gameOver = true;
-        } else {
-            *paused = true;
-        }
+        *gameOver = true;
     }
 
     for (int i = 1; i < snake->length; i++) {
@@ -360,12 +358,7 @@ void updateSnake(Snake *snake, Food *food, Obstacle obstacles[], int numObstacle
 
     for (int i = 0; i < numObstacles; i++) {
         if (obstacles[i].active && snake->body[0].x == obstacles[i].x && snake->body[0].y == obstacles[i].y) {
-            (*lives)--;
-            if (*lives <= 0) {
-                *gameOver = true;
-            } else {
-                *paused = true;
-            }
+            *gameOver = true;
         }
     }
 
@@ -376,7 +369,7 @@ void updateSnake(Snake *snake, Food *food, Obstacle obstacles[], int numObstacle
     }
 }
 
-void render(SDL_Renderer *renderer, Snake *snake, Food *food, Obstacle obstacles[], int numObstacles, int score, int lives, bool gameOver, bool paused, TTF_Font *font, SDL_Texture *foodTex, SDL_Texture *bgTex) {
+void render(SDL_Renderer *renderer, Snake *snake, Food *food, Obstacle obstacles[], int numObstacles, int score, bool gameOver, bool paused, bool returnToMenu, TTF_Font *font, SDL_Texture *foodTex, SDL_Texture *bgTex) {
     if (bgTex) {
         SDL_RenderCopy(renderer, bgTex, NULL, NULL);
     } else {
@@ -403,8 +396,8 @@ void render(SDL_Renderer *renderer, Snake *snake, Food *food, Obstacle obstacles
 
     drawSnake(renderer, snake);
 
-    char infoText[64];
-    snprintf(infoText, sizeof(infoText), "Score: %d | Vies: %d", score, lives);
+    char infoText[32];
+    snprintf(infoText, sizeof(infoText), "Score: %d", score);
     SDL_Surface *infoSurface = TTF_RenderText_Solid(font, infoText, (SDL_Color){255, 255, 255, 255});
     SDL_Texture *infoTexture = SDL_CreateTextureFromSurface(renderer, infoSurface);
     SDL_Rect infoRect = {10, 10, infoSurface->w, infoSurface->h};
@@ -413,7 +406,7 @@ void render(SDL_Renderer *renderer, Snake *snake, Food *food, Obstacle obstacles
     SDL_DestroyTexture(infoTexture);
 
     if (paused) {
-        SDL_Surface *pausedSurface = TTF_RenderText_Solid(font, "PAUSE", (SDL_Color){255, 255, 0, 255});
+        SDL_Surface *pausedSurface = TTF_RenderText_Solid(font, "PAUSE - Appuyez sur M pour le menu", (SDL_Color){255, 255, 0, 255});
         SDL_Texture *pausedTexture = SDL_CreateTextureFromSurface(renderer, pausedSurface);
         SDL_Rect pausedRect = {SCREEN_WIDTH / 2 - pausedSurface->w / 2, SCREEN_HEIGHT / 2, pausedSurface->w, pausedSurface->h};
         SDL_RenderCopy(renderer, pausedTexture, NULL, &pausedRect);
@@ -422,7 +415,7 @@ void render(SDL_Renderer *renderer, Snake *snake, Food *food, Obstacle obstacles
     }
 
     if (gameOver) {
-        SDL_Surface *gameOverSurface = TTF_RenderText_Solid(font, "GAME OVER!", (SDL_Color){255, 0, 0, 255});
+        SDL_Surface *gameOverSurface = TTF_RenderText_Solid(font, "GAME OVER! Appuyez sur M pour le menu", (SDL_Color){255, 0, 0, 255});
         SDL_Texture *gameOverTexture = SDL_CreateTextureFromSurface(renderer, gameOverSurface);
         SDL_Rect gameOverRect = {SCREEN_WIDTH / 2 - gameOverSurface->w / 2, SCREEN_HEIGHT / 2, gameOverSurface->w, gameOverSurface->h};
         SDL_RenderCopy(renderer, gameOverTexture, NULL, &gameOverRect);
