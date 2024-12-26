@@ -1,8 +1,9 @@
 # depslib dependency file v1.0
-1735088976 source:c:\users\olusegun\documents\formation c\snake_game\snake_game.c
+1735167596 source:c:\users\olusegun\documents\formation c\snake_game\snake_game.c
 	<SDL.h>
 	<SDL_ttf.h>
 	<SDL_image.h>
+	<SDL_mixer.h>
 	<stdbool.h>
 	<stdio.h>
 	<stdlib.h>
